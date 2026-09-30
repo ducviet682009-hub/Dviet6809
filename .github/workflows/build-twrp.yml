@@ -33,9 +33,14 @@ jobs:
 
       - name: Extract Joy 4 device tree
         run: |
+          test -f juniper-source.zip
+          rm -rf juniper
           mkdir -p juniper
           unzip -q juniper-source.zip -d juniper
-          find juniper -maxdepth 5 -type f | head -100
+          test -f juniper/device/vsmart/juniper/BoardConfig.mk
+          test -f juniper/device/vsmart/juniper/AndroidProducts.mk
+          test -f juniper/device/vsmart/juniper/twrp_juniper.mk
+          echo "Joy 4 device tree extracted successfully"
 
       - name: Initialize TWRP
         run: |
@@ -53,13 +58,14 @@ jobs:
       - name: Install Joy 4 device tree
         run: |
           mkdir -p twrp/device/vsmart
-          cp -a juniper/device/vsmart/juniper \
-            twrp/device/vsmart/
+          rm -rf twrp/device/vsmart/juniper
+          cp -a juniper/device/vsmart/juniper twrp/device/vsmart/
 
       - name: Check device tree
         run: |
           test -f twrp/device/vsmart/juniper/BoardConfig.mk
           test -f twrp/device/vsmart/juniper/AndroidProducts.mk
+          test -f twrp/device/vsmart/juniper/twrp_juniper.mk
           echo "Joy 4 juniper device tree OK"
 
       - name: Build recovery
@@ -72,11 +78,30 @@ jobs:
 
       - name: Prepare artifact
         run: |
+          set -e
           mkdir -p output
-          cp twrp/out/target/product/juniper/recovery.img \
-            output/twrp-juniper-B3.img
-          sha256sum output/twrp-juniper-B3.img \
-            > output/SHA256SUMS.txt
+
+          echo "Searching for recovery image..."
+          find twrp/out -type f \( -name "recovery.img" -o -name "recovery-*.img" \) -print
+
+          IMG="$(find twrp/out -type f -name "recovery.img" | head -n 1)"
+
+          if [ -z "$IMG" ]; then
+            echo "::error::recovery.img was not found after a successful recoveryimage build."
+            echo "Available image files:"
+            find twrp/out -type f -name "*.img" -print | sort || true
+            echo "Relevant recovery build files:"
+            find twrp/out/target/product/juniper -maxdepth 5 -type f \
+              \( -iname "*recovery*" -o -iname "*ramdisk*" \) -print 2>/dev/null | sort || true
+            exit 1
+          fi
+
+          echo "Found recovery image: $IMG"
+          cp "$IMG" output/twrp-juniper-B3.img
+          test -s output/twrp-juniper-B3.img
+
+          sha256sum output/twrp-juniper-B3.img > output/SHA256SUMS.txt
+          ls -lh output/
 
       - name: Upload TWRP
         uses: actions/upload-artifact@v4
